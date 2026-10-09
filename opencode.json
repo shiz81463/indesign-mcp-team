@@ -1,0 +1,13 @@
+{
+  "mcp": {
+    "indesign-nutria": {
+      "type": "local",
+      "command": [
+        "node",
+        "dist/index.js",
+        "_local/server-config.json"
+      ],
+      "enabled": true
+    }
+  }
+}

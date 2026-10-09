@@ -1,0 +1,192 @@
+import { z } from 'zod';
+import { formatResponse } from '../utils/errorHandler.js';
+import { withLogging, withErrorHandling, compose } from '../utils/middleware.js';
+import { escapeExtendScriptString } from "../utils/stringUtils.js";
+import { filePathError } from '../utils/security.js';
+export class ImageHandler {
+    name = 'image';
+    executor;
+    constructor(executor) {
+        this.executor = executor;
+    }
+    get tools() {
+        return [
+            {
+                name: 'image_place',
+                description: 'Place an image from a file path onto a page',
+                inputSchema: {
+                    pageIndex: z.number().int().min(0),
+                    filePath: z.string(),
+                    x: z.number(),
+                    y: z.number(),
+                    width: z.number().positive().optional(),
+                    height: z.number().positive().optional(),
+                },
+                handler: compose(withLogging('image_place'), withErrorHandling())(this.placeImage.bind(this)),
+            },
+            {
+                name: 'image_adjust',
+                description: 'Adjust image properties (brightness, contrast, etc.)',
+                inputSchema: {
+                    pageIndex: z.number().int().min(0),
+                    itemIndex: z.number().int().min(0),
+                    brightness: z.number().min(-100).max(100).optional(),
+                    contrast: z.number().min(-100).max(100).optional(),
+                },
+                handler: compose(withLogging('image_adjust'), withErrorHandling())(this.adjustImage.bind(this)),
+            },
+            {
+                name: 'image_fit',
+                description: 'Fit image content to its frame',
+                inputSchema: {
+                    pageIndex: z.number().int().min(0),
+                    itemIndex: z.number().int().min(0),
+                    fitting: z.enum(['fill', 'proportional', 'fitContentToFrame', 'fitFrameToContent', 'center']),
+                },
+                handler: compose(withLogging('image_fit'), withErrorHandling())(this.fitImage.bind(this)),
+            },
+            {
+                name: 'image_relink',
+                description: 'Relink/replace an image with a new file',
+                inputSchema: {
+                    pageIndex: z.number().int().min(0),
+                    itemIndex: z.number().int().min(0),
+                    filePath: z.string(),
+                },
+                handler: compose(withLogging('image_relink'), withErrorHandling())(this.relinkImage.bind(this)),
+            },
+            {
+                name: 'image_info',
+                description: 'Get metadata for an image on a page',
+                inputSchema: {
+                    pageIndex: z.number().int().min(0),
+                    itemIndex: z.number().int().min(0),
+                },
+                handler: compose(withLogging('image_info'), withErrorHandling())(this.imageInfo.bind(this)),
+            },
+        ];
+    }
+    register(server) {
+        for (const tool of this.tools) {
+            server.tool(tool.name, tool.description, tool.inputSchema, tool.handler);
+        }
+    }
+    escape(str) {
+        return escapeExtendScriptString(str);
+    }
+    async placeImage(args, _extra) {
+        const params = z.object({
+            pageIndex: z.number().int().min(0),
+            filePath: z.string(),
+            x: z.number(),
+            y: z.number(),
+            width: z.number().positive().optional(),
+            height: z.number().positive().optional(),
+        }).parse(args);
+        const escPath = this.escape(params.filePath);
+        const __pathError = filePathError(params.filePath);
+        if (__pathError) {
+            return {
+                content: [{ type: 'text', text: `Invalid file path: ${__pathError}` }],
+                isError: true,
+            };
+        }
+        const scaleCode = params.width && params.height
+            ? `frame.geometricBounds = [${params.y}, ${params.x}, ${params.y + params.height}, ${params.x + params.width}]; frame.fit(FitOptions.PROPORTIONALLY); frame.fit(FitOptions.CENTER_CONTENT);`
+            : `frame.move([${params.x}, ${params.y}]);`;
+        const code = `
+      var page = app.activeDocument.pages[${params.pageIndex}];
+      var img = page.place(File("${escPath}"))[0];
+      var frame = img.parent;
+      ${scaleCode}
+      JSON.stringify({
+        index: img.index,
+        bounds: frame.geometricBounds,
+        linkStatus: img.itemLink ? img.itemLink.status : 'unknown'
+      });
+    `;
+        const response = await this.executor.execute(code);
+        return formatResponse(response.result);
+    }
+    async adjustImage(args, _extra) {
+        const params = z.object({
+            pageIndex: z.number().int().min(0),
+            itemIndex: z.number().int().min(0),
+            brightness: z.number().min(-100).max(100).optional(),
+            contrast: z.number().min(-100).max(100).optional(),
+        }).parse(args);
+        let setStr = '';
+        if (params.brightness !== undefined)
+            setStr += `img.brightness = ${params.brightness};\n`;
+        if (params.contrast !== undefined)
+            setStr += `img.contrast = ${params.contrast};\n`;
+        const code = `
+      var img = app.activeDocument.pages[${params.pageIndex}].allGraphics[${params.itemIndex}];
+      if (!img) { throw new Error("Image not found"); }
+      ${setStr}
+      "adjusted";
+    `;
+        const response = await this.executor.execute(code);
+        return formatResponse(response.result);
+    }
+    async fitImage(args, _extra) {
+        const params = z.object({
+            pageIndex: z.number().int().min(0),
+            itemIndex: z.number().int().min(0),
+            fitting: z.enum(['fill', 'proportional', 'fitContentToFrame', 'fitFrameToContent', 'center']),
+        }).parse(args);
+        const fittingMap = {
+            fill: 'FillProportionally',
+            proportional: 'Proportionally',
+            fitContentToFrame: 'ContentToFrame',
+            fitFrameToContent: 'FrameToContent',
+            center: 'CenterContent',
+        };
+        const code = `
+      var img = app.activeDocument.pages[${params.pageIndex}].allGraphics[${params.itemIndex}];
+      if (!img) { throw new Error("Image not found"); }
+      img.fit(FitOptions.${fittingMap[params.fitting]});
+      JSON.stringify({ fitting: "${params.fitting}", bounds: img.geometricBounds });
+    `;
+        const response = await this.executor.execute(code);
+        return formatResponse(response.result);
+    }
+    async relinkImage(args, _extra) {
+        const params = z.object({
+            pageIndex: z.number().int().min(0),
+            itemIndex: z.number().int().min(0),
+            filePath: z.string(),
+        }).parse(args);
+        const escPath = this.escape(params.filePath);
+        const code = `
+      var img = app.activeDocument.pages[${params.pageIndex}].allGraphics[${params.itemIndex}];
+      if (!img || !img.itemLink) { throw new Error("Image or link not found"); }
+      img.itemLink.relink(File("${escPath}"));
+      "relinked";
+    `;
+        const response = await this.executor.execute(code);
+        return formatResponse(response.result);
+    }
+    async imageInfo(args, _extra) {
+        const params = z.object({
+            pageIndex: z.number().int().min(0),
+            itemIndex: z.number().int().min(0),
+        }).parse(args);
+        const code = `
+      var img = app.activeDocument.pages[${params.pageIndex}].allGraphics[${params.itemIndex}];
+      if (!img) { throw new Error("Image not found"); }
+      var link = img.itemLink;
+      JSON.stringify({
+        index: ${params.itemIndex},
+        filePath: link ? link.filePath : 'embedded',
+        linkStatus: link ? link.status : 'embedded',
+        bounds: img.geometricBounds,
+        effectivePpi: img.effectivePpi,
+        actualPpi: img.actualPpi
+      });
+    `;
+        const response = await this.executor.execute(code);
+        return formatResponse(response.result);
+    }
+}
+//# sourceMappingURL=ImageHandler.js.map

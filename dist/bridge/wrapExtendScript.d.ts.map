@@ -1,0 +1,1 @@
+{"version":3,"file":"wrapExtendScript.d.ts","sourceRoot":"","sources":["../../src/bridge/wrapExtendScript.ts"],"names":[],"mappings":"AAIA,MAAM,WAAW,WAAW;IAC1B,KAAK,CAAC,EAAE,OAAO,CAAC;IAChB,eAAe,CAAC,EAAE,OAAO,CAAC;CAC3B;AAED;;;;GAIG;AACH,wBAAgB,gBAAgB,CAAC,IAAI,EAAE,MAAM,EAAE,OAAO,GAAE,WAAgB,GAAG,MAAM,CAuBhF"}

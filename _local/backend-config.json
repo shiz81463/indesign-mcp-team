@@ -1,0 +1,19 @@
+{
+  "bridge": {
+    "host": "127.0.0.1",
+    "port": 8121,
+    "timeout": 120000,
+    "maxPayload": 16777216
+  },
+  "httpBridge": {
+    "enabled": false
+  },
+  "server": {
+    "transport": "websocket",
+    "name": "indesign-nutria-mcp",
+    "version": "1.4.1-local"
+  },
+  "logging": {
+    "level": "warn"
+  }
+}

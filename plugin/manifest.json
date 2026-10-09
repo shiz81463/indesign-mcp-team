@@ -1,0 +1,31 @@
+{
+  "id": "com.nutria.indesign-mcp",
+  "name": "InDesign MCP Bridge",
+  "version": "1.0.0",
+  "main": "index.html",
+  "manifestVersion": 5,
+  "entrypoints": [
+    {
+      "type": "panel",
+      "id": "panel",
+      "label": {
+        "default": "MCP Bridge"
+      },
+      "minimumSize": { "width": 300, "height": 200 },
+      "preferredDocking": "right"
+    }
+  ],
+  "host": {
+    "app": "ID",
+    "minVersion": "18.5.0"
+  },
+  "icons": [
+    { "width": 48, "height": 48, "path": "icon-48.png" },
+    { "width": 96, "height": 96, "path": "icon-96.png" }
+  ],
+  "requiredPermissions": {
+    "network": {
+      "domains": "all"
+    }
+  }
+}

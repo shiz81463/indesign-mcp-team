@@ -1,0 +1,9 @@
+node_modules/
+.env
+*.log
+_local/verification/
+_local/codex-mcp.toml
+_local/claude-mcp.json
+_local/launchd.plist
+.DS_Store
+coverage/
